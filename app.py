@@ -10,6 +10,14 @@ from ultralytics import YOLO
 st.set_page_config(layout="wide")
 st.title("Bone Fracture Detection with Deep Learning")
 
+st.markdown(
+    """
+    Hi...😄😄😄, this is Kiruthik Pranav, this app leverages deep learning models to detect bone fractures in images. 
+    You can upload your own image or test the models with some sample images to see how it works.
+    Feel free to experiment with the sample images on the left.
+    """
+)
+
 # Load YOLO models (cached to prevent reloading)
 @st.cache_resource
 def load_models():
