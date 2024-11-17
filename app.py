@@ -13,12 +13,12 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 st.set_page_config(layout="wide")
 
 # Load YOLO models
-MODEL_PATHS = ["models/model1.pt", "models/model2.pt", "models/model3.pt"]
+MODEL_PATHS = ["models/model1.pt", "models/model2.pt"] #, "models/model3.pt"]
 models = [YOLO(path) for path in MODEL_PATHS]
 
 # Set confidence threshold for all models
 for model in models:
-    model.conf = 0.9
+    model.conf = 0.4
 
 # Streamlit UI Setup
 st.title("Bone Fracture Detection with Deep Learning")
