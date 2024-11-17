@@ -18,7 +18,7 @@ models = [YOLO(path) for path in MODEL_PATHS]
 
 # Set confidence threshold for all models
 for model in models:
-    model.conf = 0.7
+    model.conf = 0.9
 
 # Streamlit UI Setup
 st.title("Bone Fracture Detection with Deep Learning")
