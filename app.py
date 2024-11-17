@@ -1,37 +1,27 @@
-import os
+import io
+import gc
 import cv2
 import numpy as np
 from PIL import Image
 import streamlit as st
 from ultralytics import YOLO
 
-# Configuration for upload and output folders
-UPLOAD_FOLDER = 'uploads/'
-OUTPUT_FOLDER = 'output/'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-st.set_page_config(layout="wide")
-
-# Load YOLO models
-MODEL_PATHS = ["models/model1.pt", "models/model2.pt"] #, "models/model3.pt"]
-models = [YOLO(path) for path in MODEL_PATHS]
-
-# Set confidence threshold for all models
-for model in models:
-    model.conf = 0.4
-
 # Streamlit UI Setup
+st.set_page_config(layout="wide")
 st.title("Bone Fracture Detection with Deep Learning")
 
-# Add a small description below the title
-st.markdown(
-    """
-    Hi...😄😄😄, this is Kiruthik Pranav, this app leverages deep learning models to detect bone fractures in images. 
-    You can upload your own image or test the models with some sample images to see how it works.
-    Feel free to experiment with the sample images on the left.
-    """
-)
+# Load YOLO models (cached to prevent reloading)
+@st.cache_resource
+def load_models():
+    MODEL_PATHS = ["models/model1.pt", "models/model2.pt"]  # Add more if needed
+    models = [YOLO(path) for path in MODEL_PATHS]
+    for model in models:
+        model.conf = 0.4
+    return models
 
+models = load_models()
+
+# Streamlit UI Setup
 st.sidebar.header("Options")
 test_mode = st.sidebar.radio("Choose Input Type:", ["Upload Image", "Use Sample Image"])
 
@@ -45,14 +35,6 @@ sample_images = {
 def resize_image(image, max_width=400, max_height=400):
     """
     Resize the given image to fit within the specified dimensions.
-    
-    Args:
-        image (PIL.Image): Input image to be resized.
-        max_width (int): Maximum allowed width.
-        max_height (int): Maximum allowed height.
-
-    Returns:
-        PIL.Image: Resized image.
     """
     width, height = image.size
     if width > max_width:
@@ -67,39 +49,28 @@ def resize_image(image, max_width=400, max_height=400):
 
 def handle_file_upload(uploaded_file):
     """
-    Handle file upload and return the image path.
-    
-    Args:
-        uploaded_file (str or UploadedFile): Image file uploaded by user.
-
-    Returns:
-        str: Path of the uploaded image.
+    Handle file upload and return the image in memory (no local storage).
     """
     try:
         if isinstance(uploaded_file, str):  # If it's a sample image
-            return uploaded_file
+            return Image.open(uploaded_file)
         else:  # If a file is uploaded
-            image_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
-            with open(image_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            return image_path
+            image = Image.open(uploaded_file)
+            return image
     except Exception as e:
         st.error(f"Error in file upload: {e}")
         raise
 
-def detect_fracture(image_path):
+def detect_fracture(image):
     """
     Detect bone fractures in an image using the pre-trained YOLO models.
-    
-    Args:
-        image_path (str): Path to the image for detection.
-
-    Returns:
-        bool: True if a fracture is detected, False otherwise.
-        PIL.Image: Annotated image with bounding boxes.
     """
     try:
-        results = [model(image_path) for model in models]
+        # Convert PIL image to an in-memory OpenCV format (BGR)
+        image_cv = np.array(image)
+        image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)
+
+        results = [model(image_cv) for model in models]
         fracture_detected = any(len(result) > 0 and len(result[0].boxes) > 0 for result in results)
 
         if fracture_detected:
@@ -110,15 +81,12 @@ def detect_fracture(image_path):
             boxes = best_result[0].boxes.xyxy.cpu().numpy()
             confidences = best_result[0].boxes.conf.cpu().numpy()
 
-            # Convert image to OpenCV format (BGR)
-            image_cv = cv2.imread(image_path)
-
             # Draw rectangles on the image for each detected box
             for box, confidence in zip(boxes, confidences):
                 x1, y1, x2, y2 = map(int, box)  # Get the coordinates
                 cv2.rectangle(image_cv, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Draw red rectangle
 
-            # Convert the annotated image back to PIL format for display
+            # Convert back to PIL format for display
             annotated_image = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
             return True, annotated_image
         else:
@@ -127,6 +95,9 @@ def detect_fracture(image_path):
     except Exception as e:
         st.error(f"Error during detection: {e}")
         return False, None
+    finally:
+        # Force garbage collection to release memory
+        gc.collect()
 
 def main():
     """
@@ -141,20 +112,19 @@ def main():
 
     if uploaded_file:
         try:
-            # Handle file upload
-            image_path = handle_file_upload(uploaded_file)
+            # Handle file upload (in memory)
+            image = handle_file_upload(uploaded_file)
 
-            # Display the uploaded image
-            input_image = Image.open(image_path)
-            resized_image = resize_image(input_image)
-
+            # Resize and display the uploaded image
+            resized_image = resize_image(image)
             col1, col2 = st.columns(2)
             with col1:
                 st.image(resized_image, caption="Uploaded Image")
 
             # Button to trigger fracture detection
             if st.button("Detect Fracture"):
-                fracture_detected, annotated_image = detect_fracture(image_path)
+                with st.spinner("Detecting fractures... 🔍"):
+                    fracture_detected, annotated_image = detect_fracture(image)
 
                 if fracture_detected:
                     st.success("Fracture detected")
